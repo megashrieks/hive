@@ -2,8 +2,9 @@ var can = document.getElementById("can");
 var ctx = can.getContext("2d");
 
 var settings = {
-    size: 200,
-    timeout: 100
+    size: 30,
+    timeout: 100,
+    creatures: 1000
 };
 var global_val = {
     x: ~~(can.width / 2),
@@ -19,24 +20,25 @@ class Creature {
     constructor() {
         var size = settings.size;
         this.pos = {
-            x: ~~(Math.random() * can.width),
-            y: ~~(Math.random() * can.height)
+            x: ~~(Math.random() * can.width / size),
+            y: ~~(Math.random() * can.height / size)
         };
         this.target = {
-            x: ~~(Math.random() * can.width + size),
-            y: ~~(Math.random() * can.height + size)
+            x: this.pos.x,
+            y: this.pos.y
         };
         this.relaxed = false;
         this.start = {
-            x: 0,
-            y: 0
+            x: this.pos.x * size,
+            y: this.pos.y * size
         };
         this.end = {
-            x: 0,
-            y: 0
+            x: this.pos.x * size,
+            y: this.pos.y * size
         };
         this.startMid = 0;
         this.endMid = 0;
+        this.timeout = Math.random() * 2000
     }
     set() {
         this.startMid = 0;
@@ -44,36 +46,52 @@ class Creature {
     }
     free() {
         var a = this;
-        setTimeout(function() {
+        setTimeout(function () {
             a.relaxed = false;
-        }, settings.timeout);
+        }, this.timeout);
     }
     setTarget() {
-        var x_diff = global_val.x - this.pos.x;
-        var y_diff = global_val.y - this.pos.y;
+        var x_diff = ~~(global_val.x / settings.size) - this.pos.x;
+        var y_diff = ~~(global_val.y / settings.size) - this.pos.y;
         if (Math.abs(x_diff) > Math.abs(y_diff)) {
-            if (x_diff < 0) this.target.x -= settings.size;
-            else this.target.x += settings.size;
+            if (x_diff < 0) this.target.x -= 1;
+            else this.target.x += 1;
         } else {
-            if (y_diff < 0) this.target.y -= settings.size;
-            else this.target.y += settings.size;
+            if (y_diff < 0) this.target.y -= 1;
+            else this.target.y += 1;
         }
     }
     update() {
         if (this.relaxed) return;
-        if (this.endMid <= 1.0) {
+        if (this.endMid < 1.0) {
             this.end = {
-                x: lerp(this.pos.x, this.target.x, this.endMid),
-                y: lerp(this.pos.y, this.target.y, this.endMid)
+                x: lerp(
+                    this.pos.x * settings.size,
+                    this.target.x * settings.size,
+                    this.endMid
+                ),
+                y: lerp(
+                    this.pos.y * settings.size,
+                    this.target.y * settings.size,
+                    this.endMid
+                )
             };
-            this.endMid += 0.05;
+            this.endMid += 0.1;
         } else {
-            if (this.startMid <= 1.0) {
+            if (this.startMid < 1.0) {
                 this.start = {
-                    x: lerp(this.pos.x, this.target.x, this.startMid),
-                    y: lerp(this.pos.y, this.target.y, this.startMid)
+                    x: lerp(
+                        this.pos.x * settings.size,
+                        this.target.x * settings.size,
+                        this.startMid
+                    ),
+                    y: lerp(
+                        this.pos.y * settings.size,
+                        this.target.y * settings.size,
+                        this.startMid
+                    )
                 };
-                this.startMid += 0.05;
+                this.startMid += 0.1;
             } else {
                 this.relaxed = true;
                 this.pos = Object.assign({}, this.target);
@@ -86,9 +104,12 @@ class Creature {
     draw() {
         if (this.relaxed) {
             p.setType("stroke");
-            ctx.fillStyle = "rgb(0,255,255)";
-            p.point(this.pos, 5);
-            ctx.fillStyle = "#000";
+            ctx.strokeStyle = "rgb(0,0,0)";
+            // p.point({
+            //     x: this.pos.x * settings.size,
+            //     y: this.pos.y * settings.size
+            // }, 3);
+            ctx.strokeStyle = "#000";
         } else {
             p.line(this.start, this.end);
         }
@@ -115,13 +136,13 @@ function resize() {
 }
 function setup() {
     creatures = [];
-    for (var i = 0; i < 10; ++i) {
+    for (var i = 0; i < settings.creatures; ++i) {
         creatures.push(new Creature());
     }
 }
 function draw() {
-    createGrid();
     p.clear();
+    // createGrid();
     for (var i = 0; i < creatures.length; ++i) {
         creatures[i].update();
         creatures[i].draw();
@@ -131,7 +152,7 @@ function draw() {
 window.onresize = resize;
 resize();
 setup();
-can.onmousemove = function(e) {
+can.onmousemove = function (e) {
     global_val = {
         x: e.clientX,
         y: e.clientY
