@@ -2,19 +2,29 @@ var can = document.getElementById("can");
 var ctx = can.getContext("2d");
 
 var settings = {
-    size: 30,
-    timeout: 100,
-    creatures: 1000
+    size: 50,
+    timeout: 0,
+    creatures: 100,
+    lerp: 0.1
 };
 var global_val = {
     x: ~~(can.width / 2),
     y: ~~(can.height / 2)
 };
 var creatures = [];
-
+var grid = [];
 var p = new can2d(can);
+
 function lerp(a, b, m) {
+    if (a - b == 0) return a;
     return (1 - m) * a + m * b;
+}
+function get_free_space(obj) {
+    if (obj.x - 1 >= 0 && grid[obj.x - 1][obj.y] == 0) return { x: obj.x - 1, y: obj.y };
+    if (obj.x + 1 < grid.length && grid[obj.x + 1][obj.y] == 0) return { x: obj.x + 1, y: obj.y };
+    if (obj.y - 1 >= 0 && grid[obj.x][obj.y - 1] == 0) return { x: obj.x, y: obj.y - 1 };
+    if (obj.y + 1 < can.height / settings.size && grid[obj.x][obj.y + 1] == 0) return { x: obj.x, y: obj.y + 1 };
+    return null;
 }
 class Creature {
     constructor() {
@@ -38,7 +48,8 @@ class Creature {
         };
         this.startMid = 0;
         this.endMid = 0;
-        this.timeout = Math.random() * 2000
+        this.timeout = 200 + Math.random() * 100;
+        this.timerIndex = 0;
     }
     set() {
         this.startMid = 0;
@@ -46,23 +57,69 @@ class Creature {
     }
     free() {
         var a = this;
-        setTimeout(function () {
+        this.timerIndex = setTimeout(function () {
             a.relaxed = false;
         }, this.timeout);
     }
     setTarget() {
-        var x_diff = ~~(global_val.x / settings.size) - this.pos.x;
-        var y_diff = ~~(global_val.y / settings.size) - this.pos.y;
-        if (Math.abs(x_diff) > Math.abs(y_diff)) {
-            if (x_diff < 0) this.target.x -= 1;
-            else this.target.x += 1;
-        } else {
-            if (y_diff < 0) this.target.y -= 1;
-            else this.target.y += 1;
+        // var x_diff = ~~(global_val.x / settings.size) - this.pos.x;
+        // var y_diff = ~~(global_val.y / settings.size) - this.pos.y;
+
+        var x_diff = ~~(Math.random() * can.width / settings.size) - this.pos.x;
+        var y_diff = ~~(Math.random() * can.height / settings.size) - this.pos.y;
+        var done = false;
+        var old_target = Object.assign({}, this.target);
+        // if (Math.abs(x_diff) > Math.abs(y_diff)) {
+        if (Math.random() > 0.5) {
+            var temp = Object.assign({}, this.target);
+            if (x_diff < 0) temp.x -= 1;
+            else temp.x += 1;
+            if (
+                temp.x >= 0 && temp.x < grid.length &&
+                temp.y >= 0 && temp.y < can.height / settings.size
+            ) {
+                if (grid[temp.x][temp.y] != 0) { done = false; }
+                else { this.target.x = temp.x; done = true; }
+            }
+        }
+        if (!done) {
+            var temp = Object.assign({}, this.target);
+            if (y_diff < 0) temp.y -= 1;
+            else temp.y += 1;
+            if (
+                temp.x >= 0 && temp.x < grid.length &&
+                temp.y >= 0 && temp.y < can.height / settings.size
+            ) {
+                if (grid[temp.x][temp.y] == 0) { this.target.y = temp.y; done = true; }
+            }
+        }
+        if (!done) {
+            var free_space = get_free_space({
+                x: this.target.x,
+                y: this.target.y
+            });
+            if (free_space != null) {
+                this.target = Object.assign({}, free_space);
+                done = true;
+            } else {
+                done = false;
+            }
+        }
+        if (JSON.stringify(old_target) != JSON.stringify(this.target)) {
+            grid[old_target.x][old_target.y] -= 1;
+            grid[this.target.x][this.target.y] += 1;
+            this.stalled = false;
+        }
+        else {
+            this.stalled = true;
         }
     }
     update() {
         if (this.relaxed) return;
+        if (this.stalled) {
+            this.setTarget();
+        }
+        if (this.stalled) return;
         if (this.endMid < 1.0) {
             this.end = {
                 x: lerp(
@@ -76,7 +133,7 @@ class Creature {
                     this.endMid
                 )
             };
-            this.endMid += 0.1;
+            this.endMid += settings.lerp;
         } else {
             if (this.startMid < 1.0) {
                 this.start = {
@@ -91,9 +148,9 @@ class Creature {
                         this.startMid
                     )
                 };
-                this.startMid += 0.1;
+                this.startMid += settings.lerp;
             } else {
-                this.relaxed = true;
+                if (this.timeout) { this.relaxed = true; }
                 this.pos = Object.assign({}, this.target);
                 this.set();
                 this.free();
@@ -102,13 +159,13 @@ class Creature {
         }
     }
     draw() {
-        if (this.relaxed) {
+        if (this.relaxed || this.stalled) {
             p.setType("stroke");
-            ctx.strokeStyle = "rgb(0,0,0)";
+            ctx.strokeStyle = "rgb(255,0,0)";
             // p.point({
             //     x: this.pos.x * settings.size,
             //     y: this.pos.y * settings.size
-            // }, 3);
+            // }, 5);
             ctx.strokeStyle = "#000";
         } else {
             p.line(this.start, this.end);
@@ -133,11 +190,23 @@ function resize() {
         x: can.width / 2,
         y: can.height / 2
     };
+    setup();
 }
 function setup() {
     creatures = [];
+    grid = [];
+    settings.creatures = Math.min(can.width / settings.size * can.height / settings.size, settings.creatures);
+    for (var i = 0; i <= can.width / settings.size; ++i) {
+        grid.push([]);
+        for (var j = 0; j <= can.height / settings.size; ++j) {
+            grid[i].push(0);
+        }
+    }
     for (var i = 0; i < settings.creatures; ++i) {
-        creatures.push(new Creature());
+        var temp = new Creature();
+        while (grid[temp.pos.x][temp.pos.y] != 0) temp = new Creature();
+        creatures.push(temp);
+        grid[temp.pos.x][temp.pos.y] = 1;
     }
 }
 function draw() {
