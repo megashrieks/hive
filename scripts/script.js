@@ -2,11 +2,14 @@ var can = document.getElementById("can");
 var ctx = can.getContext("2d");
 
 var settings = {
-    size: 50,
-    timeout: 0,
+    size: 10,
     creatures: 100,
-    lerp: 0.1
+    lerp: 0.1,
+    grid: false,
+    showGrid: false,
+    showRelaxed: true
 };
+var settings_copy = {};
 var global_val = {
     x: ~~(can.width / 2),
     y: ~~(can.height / 2)
@@ -16,7 +19,6 @@ var grid = [];
 var p = new can2d(can);
 
 function lerp(a, b, m) {
-    if (a - b == 0) return a;
     return (1 - m) * a + m * b;
 }
 function get_free_space(obj) {
@@ -48,8 +50,7 @@ class Creature {
         };
         this.startMid = 0;
         this.endMid = 0;
-        this.timeout = 200 + Math.random() * 100;
-        this.timerIndex = 0;
+        this.timeout = 200 + Math.random() * 1000;
     }
     set() {
         this.startMid = 0;
@@ -57,20 +58,20 @@ class Creature {
     }
     free() {
         var a = this;
-        this.timerIndex = setTimeout(function () {
+        setTimeout(function () {
             a.relaxed = false;
         }, this.timeout);
     }
     setTarget() {
-        // var x_diff = ~~(global_val.x / settings.size) - this.pos.x;
-        // var y_diff = ~~(global_val.y / settings.size) - this.pos.y;
+        var x_diff = ~~(global_val.x / settings.size) - this.pos.x;
+        var y_diff = ~~(global_val.y / settings.size) - this.pos.y;
 
-        var x_diff = ~~(Math.random() * can.width / settings.size) - this.pos.x;
-        var y_diff = ~~(Math.random() * can.height / settings.size) - this.pos.y;
+        // var x_diff = ~~(Math.random() * can.width / settings.size) - this.pos.x;
+        // var y_diff = ~~(Math.random() * can.height / settings.size) - this.pos.y;
         var done = false;
         var old_target = Object.assign({}, this.target);
-        // if (Math.abs(x_diff) > Math.abs(y_diff)) {
-        if (Math.random() > 0.5) {
+        if (Math.abs(x_diff) > Math.abs(y_diff)) {
+            // if (Math.random() > 0.5) {
             var temp = Object.assign({}, this.target);
             if (x_diff < 0) temp.x -= 1;
             else temp.x += 1;
@@ -78,8 +79,13 @@ class Creature {
                 temp.x >= 0 && temp.x < grid.length &&
                 temp.y >= 0 && temp.y < can.height / settings.size
             ) {
-                if (grid[temp.x][temp.y] != 0) { done = false; }
-                else { this.target.x = temp.x; done = true; }
+                if (settings.grid) {
+                    if (grid[temp.x][temp.y] != 0) { done = false; }
+                    else { this.target.x = temp.x; done = true; }
+                } else {
+                    this.target.x = temp.x;
+                    done = true;
+                }
             }
         }
         if (!done) {
@@ -90,28 +96,35 @@ class Creature {
                 temp.x >= 0 && temp.x < grid.length &&
                 temp.y >= 0 && temp.y < can.height / settings.size
             ) {
-                if (grid[temp.x][temp.y] == 0) { this.target.y = temp.y; done = true; }
+                if (settings.grid) {
+                    if (grid[temp.x][temp.y] == 0) { this.target.y = temp.y; done = true; }
+                }
+                else {
+                    this.target.y = temp.y;
+                }
             }
         }
-        if (!done) {
-            var free_space = get_free_space({
-                x: this.target.x,
-                y: this.target.y
-            });
-            if (free_space != null) {
-                this.target = Object.assign({}, free_space);
-                done = true;
-            } else {
-                done = false;
+        if (settings.grid) {
+            if (!done) {
+                var free_space = get_free_space({
+                    x: this.target.x,
+                    y: this.target.y
+                });
+                if (free_space != null) {
+                    this.target = Object.assign({}, free_space);
+                    done = true;
+                } else {
+                    done = false;
+                }
             }
-        }
-        if (JSON.stringify(old_target) != JSON.stringify(this.target)) {
-            grid[old_target.x][old_target.y] -= 1;
-            grid[this.target.x][this.target.y] += 1;
-            this.stalled = false;
-        }
-        else {
-            this.stalled = true;
+            if (JSON.stringify(old_target) != JSON.stringify(this.target)) {
+                grid[old_target.x][old_target.y] -= 1;
+                grid[this.target.x][this.target.y] += 1;
+                this.stalled = false;
+            }
+            else {
+                this.stalled = true;
+            }
         }
     }
     update() {
@@ -159,13 +172,14 @@ class Creature {
         }
     }
     draw() {
-        if (this.relaxed || this.stalled) {
+        if (this.relaxed || (this.stalled && settings.grid)) {
             p.setType("stroke");
             ctx.strokeStyle = "rgb(255,0,0)";
-            // p.point({
-            //     x: this.pos.x * settings.size,
-            //     y: this.pos.y * settings.size
-            // }, 5);
+            (this.stalled && settings.grid) && (ctx.strokeStyle = "rgb(0,0,255)");
+            settings.showRelaxed && p.point({
+                x: this.pos.x * settings.size,
+                y: this.pos.y * settings.size
+            }, 2);
             ctx.strokeStyle = "#000";
         } else {
             p.line(this.start, this.end);
@@ -192,9 +206,21 @@ function resize() {
     };
     setup();
 }
+function gui() {
+    var g = new dat.GUI();
+    g.add(settings, "size", 5, 100);
+    g.add(settings, "creatures", 1, 8000).step(1);
+    g.add(settings, "grid");
+    g.add(settings, "showRelaxed");
+    g.add(settings, "showGrid");
+}
 function setup() {
     creatures = [];
     grid = [];
+    global_val = {
+        x: can.width / 2,
+        y: can.height / 2
+    };
     settings.creatures = Math.min(can.width / settings.size * can.height / settings.size, settings.creatures);
     for (var i = 0; i <= can.width / settings.size; ++i) {
         grid.push([]);
@@ -210,8 +236,12 @@ function setup() {
     }
 }
 function draw() {
+    if (JSON.stringify(settings_copy) != JSON.stringify(settings)) {
+        setup();
+        settings_copy = Object.assign({}, settings);
+    }
     p.clear();
-    // createGrid();
+    settings.showGrid && createGrid();
     for (var i = 0; i < creatures.length; ++i) {
         creatures[i].update();
         creatures[i].draw();
@@ -220,6 +250,7 @@ function draw() {
 }
 window.onresize = resize;
 resize();
+gui();
 setup();
 can.onmousemove = function (e) {
     global_val = {
